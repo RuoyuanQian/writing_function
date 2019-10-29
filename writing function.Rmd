@@ -1,0 +1,189 @@
+---
+title: "writing function"
+author: "Ruoyuan Qian"
+date: "10/24/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rvest)
+```
+
+Writing some functions
+```{r}
+x = rnorm(n=30, mean = 4,sd = 2.3)
+y =  rnorm(n=30, mean = 6,sd = .3)
+(x - mean(x))/sd(x)
+(x - mean(x))/sd(x)
+
+```
+when the function should break
+use "stop" to break
+```{r}
+z_scores = function(x){
+  if(!is.numeric(x)){
+    stop("Argument x should be numeric")}
+  else if(length(x < 3)){
+    stop("x should be longer than 1 vectors") }
+  
+  (x - mean(x))/sd(x)
+}
+```
+
+```{r}
+
+z_scores(x = y)
+z_scores(3)
+## [1] NA
+z_scores("my name is jeff")
+## Warning in mean.default(x): argument is not numeric or logical: returning
+## NA
+## Error in x - mean(x): non-numeric argument to binary operator
+z_scores(iris)
+```
+multiple outputs
+```{r}
+mean_and_sd = function(input_x){
+    if(!is.numeric(input_x)){
+    stop("Argument x should be numeric")}
+    else if(length(input_x < 3)){
+    stop("x should be longer than 1 vectors") }
+
+  tibble(
+    mean = mean(input_x), 
+    sd = (input_x)
+  )
+}
+```
+
+```{r}
+y
+#mean_and_sd(input_x = x)
+```
+
+"coef"可以提取出linear model的系数，coef()[1]是intercept，coef()[2]是x的系数
+```{r}
+sim_data = tibble(
+  x = rnorm(30, mean = 1, sd = 1),
+  y = 2 + 3 * x + rnorm(30, 0, 1)
+)
+
+sim_data %>% 
+  ggplot(aes(x = x,y = y))+
+  geom_point()
+
+ls_fit = lm(y ~ x, data = sim_data)
+
+beta0_hat = coef(ls_fit)[1]
+beta1_hat = coef(ls_fit)[2]
+```
+用tibble可输出感兴趣的几个optput，以表格的形式
+list也可以
+```{r}
+sim_regression = function(n) {
+  
+  sim_data = tibble(
+    x = rnorm(n, mean = 1, sd = 1),
+  )
+  
+  ls_fit = lm(y ~ x, data = sim_data)
+  
+  tibble(
+    beta0_hat = coef(ls_fit)[1],
+    beta1_hat = coef(ls_fit)[2]
+  )
+}
+
+sim_regression(30)
+```
+
+可以通过输入true系数和模拟的系数做对比
+可以default function里的初始数值
+
+```{r}
+sim_regression = function(n, beta0 = 2, beta1 = 3) {
+  
+  sim_data = tibble(
+    x = rnorm(n, mean = 1, sd = 1),
+    y = beta0 + beta1 * x + rnorm(n, 0, 1)
+  )
+  
+  ls_fit = lm(y ~ x, data = sim_data)
+  
+  tibble(
+    beta0_hat = coef(ls_fit)[1],
+    beta1_hat = coef(ls_fit)[2]
+  )
+}
+sim_regression(n = 300, beta0 = 5, beta1 = -1)
+sim_regression(n = 300, beta0 = 24)
+
+```
+
+如果要page 2的信息
+```{r}
+url = "https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber=1"
+
+dynamite_html = read_html(url)
+
+review_titles = dynamite_html %>%
+  html_nodes("#cm_cr-review_list .review-title") %>%
+  html_text()
+
+review_stars = dynamite_html %>%
+  html_nodes("#cm_cr-review_list .review-rating") %>%
+  html_text()
+
+review_text = dynamite_html %>%
+    html_nodes(".review-data:nth-child(4)") %>%
+    html_text()
+
+reviews = tibble(
+  title = review_titles,
+  stars = review_stars,
+  text = review_text
+)
+```
+如果要page 2的信息，可以写function
+只写网页的网址，每次更改function里的网址
+```{r}
+read_page_reviews <- function(url) {
+  
+  h = read_html(url)
+  
+  review_titles = h %>%
+    html_nodes("#cm_cr-review_list .review-title") %>%
+    html_text()
+  
+  review_stars = h %>%
+    html_nodes("#cm_cr-review_list .review-rating") %>%
+    html_text() %>%
+    str_extract("\\d") %>%
+    as.numeric()
+  
+  review_text = h %>%
+    html_nodes(".review-data:nth-child(4)") %>%
+    html_text()
+  
+  tibble(
+    title = review_titles,
+    stars = review_stars,
+    text = review_text
+  )
+}
+```
+
+```{r}
+read_page_reviews("https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber=1")
+
+read_page_reviews("https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber=2")
+
+read_page_reviews("https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber=3")
+
+read_page_reviews("https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber=4")
+
+read_page_reviews("https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber=5")
+```
+
