@@ -1,0 +1,243 @@
+---
+title: "Untitled"
+author: "Ruoyuan Qian"
+date: "10/29/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rvest)
+```
+
+可以在list里放任何东西，可以放不同长度的向量甚至dataframe，用法list(a,b,c)
+
+但是dataframe只能放长度一致的向量
+
+```{r}
+l = list(vec_numeric = 5:8,
+         mat         = matrix(1:8, 2, 4),
+         vec_logical = c(TRUE, FALSE),
+         summary     = summary(rnorm(1000)))
+l
+```
+用[[]]来调用list里的数据，[[]][]可以调出第x个向量的第xx元素
+
+```{r}
+l$vec_numeric
+
+l$summary
+
+l[[4]]
+
+l[[1]][1:3]
+```
+
+```{r}
+df = tibble(
+  a = rnorm(20, 3, 1),
+  b = rnorm(20, 0, 5),
+  c = rnorm(20, 10, .2),
+  d = rnorm(20, -3, 1)
+)
+
+is.list(df)
+```
+
+```{r}
+mean_and_sd = function(x) {
+  
+  if (!is.numeric(x)) {
+    stop("Argument x should be numeric")
+  } else if (length(x) == 1) {
+    stop("Cannot be computed for length 1 vectors")
+  }
+  
+  mean_x = mean(x)
+  sd_x = sd(x)
+
+  tibble(
+    mean = mean_x, 
+    sd = sd_x
+  )
+}
+mean_and_sd(df[[1]])
+## # A tibble: 1 x 2
+##    mean    sd
+##   <dbl> <dbl>
+## 1  2.70  1.12
+mean_and_sd(df[[2]])
+## # A tibble: 1 x 2
+##    mean    sd
+##   <dbl> <dbl>
+## 1 0.416  4.08
+mean_and_sd(df[[3]])
+## # A tibble: 1 x 2
+##    mean    sd
+##   <dbl> <dbl>
+## 1  10.1 0.191
+mean_and_sd(df[[4]])
+```
+```{r}
+output = vector("list", length = 4)
+```
+Write for loop
+在for里放函数，在储存到向量里
+```{r}
+for(i in 1:4){
+  output[[i]] = mean_and_sd(df[[i]])
+}
+
+output
+```
+
+用map可以计算tibble里每个向量的mean和sd，和循环的结果一样
+```{r}
+output = map(df,mean_and_sd)
+```
+map有不同的输出形式，map_df可输出dataframe的形式，map输出list形式
+```{r}
+output = map_df(df,mean_and_sd)
+```
+```{r}
+map(.x=sd, ~mean_and_sd(.x))
+```
+```{r}
+library(rvest)
+read_page_reviews = function(url) {
+  
+  h = read_html(url)
+  
+  title = h %>%
+    html_nodes("#cm_cr-review_list .review-title") %>%
+    html_text()
+  
+  stars = h %>%
+    html_nodes("#cm_cr-review_list .review-rating") %>%
+    html_text() %>%
+    str_extract("\\d") %>%
+    as.numeric()
+  
+  text = h %>%
+    html_nodes(".review-data:nth-child(5)") %>%
+    html_text()
+  
+  data_frame(title, stars, text)
+}
+
+```
+
+需要用到多个页面，可以先str_c建一个不同page的向量，在用for循环,或者map
+```{r}
+url_base = "https://www.amazon.com/product-reviews/B00005JNBQ/ref=cm_cr_arp_d_viewopt_rvwer?ie=UTF8&reviewerType=avp_only_reviews&sortBy=recent&pageNumber="
+
+vec_urls = str_c(url_base, 1:5)
+
+output = vector("list", 5)
+
+for (i in 1:5) {
+  output[[i]] = read_page_reviews(vec_urls[[i]])
+}
+
+output = map(vec_urls,read_page_reviews)
+
+dynamite_reviews = bind_rows(output)
+
+dynamite_reviews = map_df(vec_urls, read_page_reviews)
+```
+
+
+```{r}
+weather = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728", "USC00519397", "USS0023B17S"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2016-01-01",
+    date_max = "2016-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY", 
+                      USC00519397 = "Waikiki_HA",
+                      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+nest within station, 将感兴趣的变量连接起来，叫做data，data是list的形式（在consloe里显示更清晰）
+目的：可看感兴趣的变量的scale（有几个id）
+pull data时，输出的是list的形式（不同的id为分组）
+unnest 可以接触绑定
+```{r}
+weather_nest = 
+weather %>% 
+  nest(data = date:tmin)
+
+weather_nest %>% 
+  pull(data)
+  
+weather_nest %>% 
+  unnest() 
+```
+
+## Operations on list columns
+
+可以取第一个id的变量做回归
+```{r}
+central_park_df = weather_nest$data[[1]]
+
+lm(tmax ~ tmin, data = central_park_df)
+```
+
+try a loop
+三种方式
+1. 直接loop
+2. 先写成function，再放到loop运行
+3. 先写成function，再放进map
+```{r}
+output = 
+  vector("list",length = 3)
+
+for(i in 1:3){
+  output[[i]] = lm(tmax ~ tmin,weather_nest$data[[i]])
+}
+```
+
+```{r}
+weather_lm = function(df) {
+  lm(tmax ~ tmin, data = df)
+}
+```
+
+```{r}
+for(i in 1:3){
+  output[[i]] = weather_lm(weather_nest$data[[i]])
+}
+
+output = map(weather_nest$data,weahter_lm)
+```
+
+让结果readable，可以用mutate将map的结果储存到原数据中成为一个list
+```{r}
+weather_nest %>% 
+  mutate(lin_models = map(data, weather_lm)) 
+
+weather_nest %>% 
+  mutate(lin_models = map(data, weather_lm)) %>% 
+  select(-data) %>% 
+  filter(name != "CentralPark_NY")
+  
+```
+Relist napoleon ...again
+显示list的内容
+%>% unnest()
+```{r}
+tibble(
+  page = 1:5,
+  urls = str_c(url_base, page)
+) %>% 
+  mutate(
+    reviews = map(urls, read_page_reviews)
+  ) %>% 
+  unnest(reviews)
+```
+
