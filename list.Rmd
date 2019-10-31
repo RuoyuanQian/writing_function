@@ -5,6 +5,22 @@ date: "10/29/2019"
 output: html_document
 ---
 
+Notes:
+
+1. prop.test() %>% broom::tidy  可以把test结果改成table的形式
+2. df %>% 
+    mutate(prop_test = 
+           map2(.x = , .y = , ~prop.test(x = .x, n = .y))，
+           estimate_df = map(prop_test,broom::tidy)) %>% 
+           unnest(estimate_df)
+  可以直接在数据框中加test的结果，结果以list形式。
+  map2 用于有两个原始参数
+  再用map可以把结果变成变量的list,
+  unnest 展开list，得到多个变量： CI, Lower Bound,...,P-value
+  
+3. 用fct_reorder()时记得先ungroup()
+4. 可以画图的时候在点图上加置信区间
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
