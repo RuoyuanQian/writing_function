@@ -1,0 +1,150 @@
+---
+title: "Untitled"
+author: "Ruoyuan Qian"
+date: "10/31/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(rvest)
+```
+
+Linear regression
+```{r}
+set.seed(1)
+
+sim_regression = function(n, beta0 = 2, beta1 = 3) {
+  
+  sim_data = tibble(
+    x = rnorm(n, mean = 1, sd = 1),
+    y = beta0 + beta1 * x + rnorm(n, 0, 1)
+  )
+  
+  ls_fit = lm(y ~ x, data = sim_data)
+  
+  tibble(
+    beta0_hat = coef(ls_fit)[1],
+    beta1_hat = coef(ls_fit)[2]
+  )
+}
+```
+
+     
+```{r}
+sim_regression(n = 30)
+```
+
+## rerun using a fro loop
+
+# rerun similation using 'purr'
+
+```{r}
+outout = vector("list", length = 5000)
+
+for(i in 1:5000){
+  output[[i]] = sim_regression(n = 30)
+}
+
+bind_rows(output) %>% 
+  ggplot(aes(x = beta0_hat))+
+  geom_density()
+
+```
+
+将output的5000个list合成一个
+```{r}
+bind_rows(output)
+```
+
+```{r}
+sim_results = 
+  rerun(100, sim_regression(30, 2, 3)) %>% 
+  bind_rows()
+
+```
+
+
+```{r}
+sim_results %>% 
+  ggplot(aes(x = beta0_hat, y = beta1_hat)) + 
+  geom_point()
+
+
+```
+
+bind_rows 可以将很多个list合成两个变量，一个dataframe的形式
+```{r}
+
+output = rerun(5000,sim_regression(30, 2, 3)) %>% 
+           bind_rows
+
+
+```
+
+```{r}
+sim_results %>% 
+  gather(key = parameter, value = estimate, beta0_hat:beta1_hat) %>% 
+  group_by(parameter) %>% 
+  summarize(emp_mean = mean(estimate),
+            emp_var = var(estimate)) %>% 
+  knitr::kable(digits = 3)
+```
+
+Want to varify the smaple sizes 
+
+每个样本量跑100次，rerun就是100次的循环，因此只用将不同样本量变成循环，分成不同样本量的四个list
+```{r}
+n_list = list("n_30"  = 30, 
+              "n_60"  = 60, 
+              "n_120" = 120, 
+              "n_240" = 240)
+output = vector("list", length = 4)
+
+for (i in 1:4) {
+  output[[i]] = rerun(100, sim_regression(n_list[[i]])) %>% 
+    bind_rows
+}
+
+
+```
+
+可以用某种样本量的list画图
+```{r}
+output[[4]] %>% 
+  ggplot(mapping = aes(x = beta0_hat)) +
+  geom_density()
+```
+## 终极code！！！rerun每种样本量n次，输出数据狂的形式
+```{r}
+sim_results = 
+  tibble(
+    sample_size = c(30,60,90,240)) %>% 
+  mutate(output_list = map(.x = sample_size, ~rerun(10,sim_regression(n=.x))),
+         output_df = map(output_list,bind_rows) )%>% 
+  select(-output_list) %>% 
+  unnest(output_df)
+```
+```{r}
+sim_results %>% 
+  group_by(sample_size) %>% 
+  summarize(var_b1=var(beta1_hat))
+```
+
+```{r}
+sim_results %>% 
+  mutate(
+    sample_size = str_c("n = ", sample_size),
+    sample_size = fct_inorder(sample_size)) %>% 
+  ggplot(aes(x = beta0_hat, y = beta1_hat)) + 
+  geom_point(alpha = .2) + 
+  facet_grid(~sample_size)
+```
+
+
+
