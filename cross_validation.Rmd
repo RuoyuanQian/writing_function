@@ -1,0 +1,166 @@
+---
+title: "Cross Validation"
+author: "Ruoyuan Qian"
+date: "11/12/2019"
+output: html_document
+---
+
+AIC  fitness + simpliness
+用 80% build model，20% test model，data越多model越准确
+用RMSE evaluate the model
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(modelr)
+library(mgcv)
+```
+
+# cross validation
+
+Generate a dataset
+Not linear function
+```{r}
+nonlin_df = 
+  tibble(
+    id = 1:100,
+    x = runif(100, 0, 1),
+    y = 1 - 10 * (x - .3) ^ 2 + rnorm(100, 0, .3)
+  )
+
+nonlin_df %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point() + theme_bw()
+```
+
+Traning and testing
+sample_frac 对df随机抽样，frac=.8，抽取80%的数据
+sample_n 效果一样
+anti_join，去掉nonlin_df中含有train_df的数据
+```{r}
+train_df = sample_frac(nonlin_df,frac=.8)
+train_df = sample_n(nonlin_df, 80)
+
+test_df = anti_join(nonlin_df, train_df, by = "id")
+
+ggplot(train_df, aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_point(data = test_df, color = "red")
+
+```
+
+Fit three models of varying goodness
+```{r}
+linear_mod = lm(y ~ x, data = train_df)
+smooth_mod = mgcv::gam(y ~ s(x), data = train_df)
+wiggly_mod = mgcv::gam(y ~ s(x, k = 30), sp = 10e-6, data = train_df)
+```
+
+Let's look at some fits.
+`add_predictions` 可以选择fit的不同模型
+ 
+```{r}
+train_df %>% 
+  add_predictions(linear_mod) %>% 
+  ggplot(aes(x = x, y = y)) + geom_point() + 
+  geom_line(aes(y = pred), color = "red")
+
+
+train_df %>% 
+  add_predictions(smooth_mod) %>% 
+  ggplot(aes(x = x, y = y)) + geom_point() + 
+  geom_line(aes(y = pred), color = "red")
+
+train_df %>% 
+  add_predictions(wiggly_mod) %>% 
+  ggplot(aes(x = x, y = y)) + geom_point() + 
+  geom_line(aes(y = pred), color = "red")
+
+train_df %>% 
+  gather_predictions(linear_mod, smooth_mod, wiggly_mod) %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = x, y = y)) + 
+  geom_point() + 
+  geom_line(aes(y = pred), color = "red") + 
+  facet_wrap(~model)
+```
+
+用rmse对test_df进行计算，越小说明model越好
+一般不可能zero，几个相比较下越小越好
+
+当检查train_df时，wiggly最好，因为最精确，但有可能太精确导致test结果不好（一般不用检查train，只检查test）
+```{r}
+rmse(linear_mod,test_df)
+rmse(smooth_mod,test_df)
+rmse(wiggly_mod,test_df)
+
+rmse(linear_mod,train_df)
+rmse(smooth_mod,train_df)
+rmse(wiggly_mod,train_df)
+```
+
+## Do this all using `modelr`
+ 可以一次制造多个 train + test 组合，80/20是defualt设置
+```{r}
+cv_df = 
+  crossv_mc(nonlin_df, 100) 
+
+# 提取出第一个组合中train的数据，并转成tibble
+cv_df %>% pull(train) %>% .[[1]] %>% as_tibble
+```
+
+# 用map将crossv_mc转成list形式，更易tidy更明确
+```{r }
+
+cv_df =
+  cv_df %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+```
+
+Try 
+对每个组合的train做一次lm，在用每个组合的test做rmse
+```{r}
+cv_df %>% 
+  mutate(
+    linear_mods = map(.x = train, ~lm(y ~ x,data = .x)),
+    rmse_lin = map2(.x = linear_mods, .y = test, ~rmse(.x, .y))
+  )
+
+cv_reslut = 
+  cv_df %>% 
+  mutate(linear_mod  = map(train, ~lm(y ~ x, data = .x)),
+         smooth_mod  = map(train, ~mgcv::gam(y ~ s(x), data = .x)),
+         wiggly_mod  = map(train, ~gam(y ~ s(x, k = 30), sp = 10e-6, data = .x))) %>% 
+  mutate(rmse_linear = map2_dbl(linear_mod, test, ~rmse(model = .x, data = .y)),
+         rmse_smooth = map2_dbl(smooth_mod, test, ~rmse(model = .x, data = .y)),
+         rmse_wiggly = map2_dbl(wiggly_mod, test, ~rmse(model = .x, data = .y)))
+```
+
+visualize this!
+`select(starts_with("rmse"))` 选出变量名以`rmse`开头的变量
+变成竖着的形式
+```{r}
+cv_reslut %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+# Example
+```{r}
+child_growth = read_csv("./data/nepalese_children.csv")
+```
+
+
+```{r}
+child_growth %>% 
+  ggplot(aes(x = weight, y = armc)) + 
+  geom_point(alpha = .5)
+```
+
